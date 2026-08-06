@@ -16,35 +16,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def get_youtube_id(url: str):
-    patterns = [
-        r'v=([a-zA-Z0-9_-]{11})',
-        r'youtu\.be/([a-zA-Z0-9_-]{11})',
-        r'shorts/([a-zA-Z0-9_-]{11})'
-    ]
+def get_yt_id(url: str):
+    patterns = [r'v=([a-zA-Z0-9_-]{11})', r'youtu\.be/([a-zA-Z0-9_-]{11})', r'shorts/([a-zA-Z0-9_-]{11})']
     for p in patterns:
         match = re.search(p, url)
-        if match:
-            return match.group(1)
+        if match: return match.group(1)
     return None
 
 @app.get("/")
 def home():
-    return {"status": "active", "message": "Downloader API is running smoothly!"}
+    return {"status": "active", "message": "Downloader API is running with Free Premium-Level Bypass!"}
 
 @app.get("/api/extract")
 def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # 1. TikTok Extractor (TikWM API)
+        # 1. TikTok Extractor (Free & Stable)
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
             tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
             req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
-            
             with urllib.request.urlopen(req, timeout=10) as response:
                 res_data = json.loads(response.read().decode())
-
             if res_data.get("code") == 0 and "data" in res_data:
                 data = res_data["data"]
                 return {
@@ -55,70 +48,69 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YouTube Guarantee Extractor (Piped + Cobalt Hybrid - Zero Bot Block)
+        # 2. YOUTUBE 100% FREE BYPASS (Cobalt V7 - No Bot Block)
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            v_id = get_youtube_id(decoded_url)
+            # Free Community Instances of Cobalt V7
+            cobalt_endpoints = [
+                "https://api.cobalt.tools/",
+                "https://co.wuk.sh/",
+                "https://api.wuk.sh/"
+            ]
             
-            # Method A: Piped Public API
-            if v_id:
-                piped_instances = [
-                    f"https://pipedapi.kavin.rocks/streams/{v_id}",
-                    f"https://api.piped.private.coffee/streams/{v_id}",
-                    f"https://pipedapi.mha.fi/streams/{v_id}"
-                ]
-                for p_url in piped_instances:
-                    try:
-                        req = urllib.request.Request(p_url, headers={'User-Agent': 'Mozilla/5.0'})
-                        with urllib.request.urlopen(req, timeout=5) as response:
-                            res_data = json.loads(response.read().decode())
-                            
-                            streams = res_data.get("videoStreams", [])
-                            if streams:
-                                # Get best combined video/audio stream
-                                best_stream = None
-                                for s in streams:
-                                    if s.get("format") == "MPEG_4" and s.get("videoOnly") == False:
-                                        best_stream = s.get("url")
-                                        break
-                                if not best_stream:
-                                    best_stream = streams[0].get("url")
-                                
-                                return {
-                                    "success": True,
-                                    "title": res_data.get("title", "YouTube Video"),
-                                    "thumbnail": res_data.get("thumbnailUrl", f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg"),
-                                    "download_url": best_stream,
-                                    "duration": res_data.get("duration", 0)
-                                }
-                    except Exception:
-                        continue
+            payload = json.dumps({
+                "url": decoded_url,
+                "videoQuality": "720",
+                "youtubeVideoCodec": "mp4"
+            }).encode('utf-8')
+            
+            for endpoint in cobalt_endpoints:
+                try:
+                    req = urllib.request.Request(
+                        endpoint,
+                        data=payload,
+                        headers={
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                            "Origin": "https://cobalt.tools",
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                        },
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=8) as response:
+                        res_data = json.loads(response.read().decode())
+                        
+                        # V7 API direct URL return karti hai
+                        if "url" in res_data:
+                            v_id = get_yt_id(decoded_url)
+                            thumb = f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else ""
+                            return {
+                                "success": True,
+                                "title": "YouTube Video",
+                                "thumbnail": thumb,
+                                "download_url": res_data["url"],
+                                "duration": 0
+                            }
+                except Exception:
+                    continue # Agar ek free server down ho, to doosra try karo
+                    
+            return {"success": False, "error": "All free YouTube servers are busy. Please try again in a few seconds."}
 
-            return {
-                "success": False,
-                "error": "Could not fetch YouTube video link. Please try again."
-            }
-
-        # 3. Instagram / Other Social Platforms (yt-dlp)
+        # 3. Instagram / FB / Others (Fallback)
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'user_agent': 'Mozilla/5.0',
         }
-
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(decoded_url, download=False)
             download_url = info.get('url')
-            
             if not download_url and 'formats' in info:
                 for f in info['formats']:
                     if f.get('vcodec') != 'none' and f.get('url'):
                         download_url = f['url']
                         break
-
-            if not download_url:
-                raise HTTPException(status_code=400, detail="Could not extract direct video URL")
 
             return {
                 "success": True,
@@ -129,7 +121,4 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
             }
 
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return {"success": False, "error": str(e)}
