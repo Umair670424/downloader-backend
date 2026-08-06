@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+import requests
 import yt_dlp
 import urllib.parse
 
@@ -20,9 +21,25 @@ def home():
 @app.get("/api/extract")
 def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
-        # Decode URL if double encoded from Android
         decoded_url = urllib.parse.unquote(url).strip()
 
+        # Check if TikTok URL -> Use TikWM Service for 100% Clean Link
+        if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
+            api_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
+            res = requests.get(api_url, timeout=10).json()
+            
+            if res.get("code") == 0 and "data" in res:
+                data = res["data"]
+                # data['play'] provides no-watermark direct playable MP4
+                return {
+                    "success": True,
+                    "title": data.get("title", "TikTok Video"),
+                    "thumbnail": data.get("cover", ""),
+                    "download_url": data.get("play"), 
+                    "duration": data.get("duration", 0)
+                }
+
+        # Fallback to yt-dlp for Instagram, YouTube, etc.
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
@@ -32,8 +49,6 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(decoded_url, download=False)
-            
-            # Find direct video URL
             download_url = info.get('url')
             if not download_url and 'formats' in info:
                 for f in info['formats']:
