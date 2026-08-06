@@ -24,7 +24,7 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # 1. TikTok Handler (TikWM API via built-in urllib - zero crash risk)
+        # 1. TikTok Extractor (Fast & Clean via TikWM)
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
             tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
             req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -42,21 +42,32 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. Instagram / YouTube / Other Platforms (yt-dlp)
+        # 2. YouTube & Instagram Extractor (Optimized yt-dlp Options)
         ydl_opts = {
-            'format': 'best[ext=mp4]/best',
+            # Pick best playable MP4 format with audio
+            'format': 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'nocheckcertificate': True,
+            # YouTube bot-detection bypass settings
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'web'],
+                    'skip': ['hls', 'dash']
+                }
+            },
+            'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(decoded_url, download=False)
+            
             download_url = info.get('url')
             
+            # If main URL is not direct, check format lists
             if not download_url and 'formats' in info:
-                for f in info['formats']:
-                    if f.get('vcodec') != 'none' and f.get('url'):
+                for f in reversed(info['formats']):
+                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url'):
                         download_url = f['url']
                         break
 
@@ -72,7 +83,6 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
             }
 
     except Exception as e:
-        # Prevent 500 Crash, return clean JSON error instead
         return {
             "success": False,
             "error": str(e)
