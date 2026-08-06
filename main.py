@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 import urllib.request
 import json
+import re
 import yt_dlp
 
 app = FastAPI()
@@ -14,6 +15,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def extract_youtube_id(url: str):
+    pattern = r'(?:v=|\/([0-9A-Za-z_-]{11})|youtu\.be\/)'
+    match = re.search(pattern, url)
+    if match:
+        return match.group(1) or match.group(0).replace('v=', '').replace('/', '')
+    return None
 
 @app.get("/")
 def home():
@@ -42,44 +50,49 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YouTube Bypass Service (Bypasses "Sign in to confirm you're not a bot")
+        # 2. YouTube Bypass (Using Invidious / Piped API - No Bot Block & No Cookies Required)
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            try:
-                # Cobalt Public Instance API for YouTube Bypass
-                cobalt_url = "https://api.cobalt.tools/api/json"
-                payload = json.dumps({"url": decoded_url}).encode('utf-8')
+            video_id = extract_youtube_id(decoded_url)
+            if video_id:
+                # Primary API: Invidious Public Instance
+                invidious_instances = [
+                    f"https://api.invidious.io/api/v1/videos/{video_id}",
+                    f"https://invidious.nerdvpn.de/api/v1/videos/{video_id}",
+                    f"https://inv.tux.pizza/api/v1/videos/{video_id}"
+                ]
                 
-                req = urllib.request.Request(
-                    cobalt_url,
-                    data=payload,
-                    headers={
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'Mozilla/5.0'
-                    },
-                    method='POST'
-                )
-                
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    res_data = json.loads(response.read().decode())
-                    if "url" in res_data:
-                        return {
-                            "success": True,
-                            "title": "YouTube Video",
-                            "thumbnail": "",
-                            "download_url": res_data["url"],
-                            "duration": 0
-                        }
-            except Exception:
-                pass # Fallback to yt-dlp if Cobalt is busy
+                for inst_url in invidious_instances:
+                    try:
+                        req = urllib.request.Request(inst_url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req, timeout=5) as response:
+                            res_data = json.loads(response.read().decode())
+                            
+                            formats = res_data.get("formatStreams", [])
+                            if formats:
+                                # Pick best combined video+audio MP4
+                                best_stream = formats[-1].get("url")
+                                return {
+                                    "success": True,
+                                    "title": res_data.get("title", "YouTube Video"),
+                                    "thumbnail": res_data.get("videoThumbnails", [{}])[0].get("url", ""),
+                                    "download_url": best_stream,
+                                    "duration": res_data.get("lengthSeconds", 0)
+                                }
+                    except Exception:
+                        continue # If instance fails, try next instance
 
-        # 3. Fallback: yt-dlp (For Instagram, Facebook, etc.)
+        # 3. Instagram & Fallback Extractor (yt-dlp with TV/IOS Client Bypass)
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['ios', 'mweb']
+                }
+            },
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
