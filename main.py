@@ -17,7 +17,6 @@ app.add_middleware(
 )
 
 def get_youtube_id(url: str):
-    # Regex to pull Video ID from shorts, standard link, or shortened link
     patterns = [
         r'v=([a-zA-Z0-9_-]{11})',
         r'youtu\.be/([a-zA-Z0-9_-]{11})',
@@ -56,38 +55,47 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YouTube Guaranteed Bypass (No yt-dlp to avoid Bot Block)
+        # 2. YouTube Guarantee Extractor (Piped + Cobalt Hybrid - Zero Bot Block)
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
             v_id = get_youtube_id(decoded_url)
             
-            # Primary: Invidious Instances
-            instances = [
-                f"https://invidious.nerdvpn.de/api/v1/videos/{v_id}",
-                f"https://inv.tux.pizza/api/v1/videos/{v_id}",
-                f"https://vid.puffyan.us/api/v1/videos/{v_id}"
-            ]
-            
+            # Method A: Piped Public API
             if v_id:
-                for inst in instances:
+                piped_instances = [
+                    f"https://pipedapi.kavin.rocks/streams/{v_id}",
+                    f"https://api.piped.private.coffee/streams/{v_id}",
+                    f"https://pipedapi.mha.fi/streams/{v_id}"
+                ]
+                for p_url in piped_instances:
                     try:
-                        req = urllib.request.Request(inst, headers={'User-Agent': 'Mozilla/5.0'})
-                        with urllib.request.urlopen(req, timeout=6) as response:
+                        req = urllib.request.Request(p_url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req, timeout=5) as response:
                             res_data = json.loads(response.read().decode())
-                            formats = res_data.get("formatStreams", [])
-                            if formats:
+                            
+                            streams = res_data.get("videoStreams", [])
+                            if streams:
+                                # Get best combined video/audio stream
+                                best_stream = None
+                                for s in streams:
+                                    if s.get("format") == "MPEG_4" and s.get("videoOnly") == False:
+                                        best_stream = s.get("url")
+                                        break
+                                if not best_stream:
+                                    best_stream = streams[0].get("url")
+                                
                                 return {
                                     "success": True,
                                     "title": res_data.get("title", "YouTube Video"),
-                                    "thumbnail": f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg",
-                                    "download_url": formats[-1].get("url"),
-                                    "duration": res_data.get("lengthSeconds", 0)
+                                    "thumbnail": res_data.get("thumbnailUrl", f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg"),
+                                    "download_url": best_stream,
+                                    "duration": res_data.get("duration", 0)
                                 }
                     except Exception:
                         continue
 
             return {
                 "success": False,
-                "error": "YouTube temporary server busy. Please try another link."
+                "error": "Could not fetch YouTube video link. Please try again."
             }
 
         # 3. Instagram / Other Social Platforms (yt-dlp)
