@@ -24,7 +24,7 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # 1. TikTok Extractor (Fast & Clean via TikWM)
+        # 1. TikTok Extractor (TikWM - Free & Stable)
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
             tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
             req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -42,32 +42,53 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YouTube & Instagram Extractor (Optimized yt-dlp Options)
+        # 2. YouTube Bypass Service (Bypasses "Sign in to confirm you're not a bot")
+        if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
+            try:
+                # Cobalt Public Instance API for YouTube Bypass
+                cobalt_url = "https://api.cobalt.tools/api/json"
+                payload = json.dumps({"url": decoded_url}).encode('utf-8')
+                
+                req = urllib.request.Request(
+                    cobalt_url,
+                    data=payload,
+                    headers={
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'Mozilla/5.0'
+                    },
+                    method='POST'
+                )
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    res_data = json.loads(response.read().decode())
+                    if "url" in res_data:
+                        return {
+                            "success": True,
+                            "title": "YouTube Video",
+                            "thumbnail": "",
+                            "download_url": res_data["url"],
+                            "duration": 0
+                        }
+            except Exception:
+                pass # Fallback to yt-dlp if Cobalt is busy
+
+        # 3. Fallback: yt-dlp (For Instagram, Facebook, etc.)
         ydl_opts = {
-            # Pick best playable MP4 format with audio
-            'format': 'best[ext=mp4][vcodec!=none][acodec!=none]/best[ext=mp4]/best',
+            'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            # YouTube bot-detection bypass settings
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'web'],
-                    'skip': ['hls', 'dash']
-                }
-            },
-            'user_agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(decoded_url, download=False)
-            
             download_url = info.get('url')
             
-            # If main URL is not direct, check format lists
             if not download_url and 'formats' in info:
-                for f in reversed(info['formats']):
-                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none' and f.get('url'):
+                for f in info['formats']:
+                    if f.get('vcodec') != 'none' and f.get('url'):
                         download_url = f['url']
                         break
 
