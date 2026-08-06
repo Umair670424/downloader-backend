@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-import requests
-import yt_dlp
 import urllib.parse
+import urllib.request
+import json
+import yt_dlp
 
 app = FastAPI()
 
@@ -23,23 +24,25 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # Check if TikTok URL -> Use TikWM Service for 100% Clean Link
+        # 1. TikTok Handler (TikWM API via built-in urllib - zero crash risk)
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
-            api_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
-            res = requests.get(api_url, timeout=10).json()
+            tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
+            req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
             
-            if res.get("code") == 0 and "data" in res:
-                data = res["data"]
-                # data['play'] provides no-watermark direct playable MP4
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_data = json.loads(response.read().decode())
+
+            if res_data.get("code") == 0 and "data" in res_data:
+                data = res_data["data"]
                 return {
                     "success": True,
                     "title": data.get("title", "TikTok Video"),
                     "thumbnail": data.get("cover", ""),
-                    "download_url": data.get("play"), 
+                    "download_url": data.get("play"),
                     "duration": data.get("duration", 0)
                 }
 
-        # Fallback to yt-dlp for Instagram, YouTube, etc.
+        # 2. Instagram / YouTube / Other Platforms (yt-dlp)
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
@@ -50,6 +53,7 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(decoded_url, download=False)
             download_url = info.get('url')
+            
             if not download_url and 'formats' in info:
                 for f in info['formats']:
                     if f.get('vcodec') != 'none' and f.get('url'):
@@ -68,4 +72,8 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
             }
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Prevent 500 Crash, return clean JSON error instead
+        return {
+            "success": False,
+            "error": str(e)
+        }
