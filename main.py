@@ -25,14 +25,14 @@ def get_yt_id(url: str):
 
 @app.get("/")
 def home():
-    return {"status": "active", "message": "Downloader API is running with Free Premium-Level Bypass!"}
+    return {"status": "active", "message": "Downloader API running on Secret Servers!"}
 
 @app.get("/api/extract")
 def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # 1. TikTok Extractor (Free & Stable)
+        # 1. TikTok Extractor
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
             tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
             req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -48,22 +48,22 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YOUTUBE 100% FREE BYPASS (Cobalt V7 - No Bot Block)
+        # 2. YOUTUBE SECRET SERVERS (100% Free & No Block)
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            # Free Community Instances of Cobalt V7
-            cobalt_endpoints = [
-                "https://api.cobalt.tools/",
-                "https://co.wuk.sh/",
-                "https://api.wuk.sh/"
+            # Lesser-known private servers (Zero load)
+            secret_servers = [
+                "https://cobalt.owo.network/",
+                "https://cobalt.cachyos.org/",
+                "https://dl.khub.win/",
+                "https://cobalt.eepy.today/"
             ]
             
             payload = json.dumps({
                 "url": decoded_url,
-                "videoQuality": "720",
-                "youtubeVideoCodec": "mp4"
+                "videoQuality": "720"
             }).encode('utf-8')
             
-            for endpoint in cobalt_endpoints:
+            for endpoint in secret_servers:
                 try:
                     req = urllib.request.Request(
                         endpoint,
@@ -79,7 +79,6 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     with urllib.request.urlopen(req, timeout=8) as response:
                         res_data = json.loads(response.read().decode())
                         
-                        # V7 API direct URL return karti hai
                         if "url" in res_data:
                             v_id = get_yt_id(decoded_url)
                             thumb = f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else ""
@@ -91,11 +90,11 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                                 "duration": 0
                             }
                 except Exception:
-                    continue # Agar ek free server down ho, to doosra try karo
+                    continue 
                     
-            return {"success": False, "error": "All free YouTube servers are busy. Please try again in a few seconds."}
+            return {"success": False, "error": "Bhai thori der mein dobara try karein, server busy hai."}
 
-        # 3. Instagram / FB / Others (Fallback)
+        # 3. Instagram / Others
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
             'quiet': True,
