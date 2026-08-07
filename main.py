@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 import urllib.request
 import json
-import re
 import yt_dlp
 
 app = FastAPI()
@@ -16,23 +15,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def get_yt_id(url: str):
-    patterns = [r'v=([a-zA-Z0-9_-]{11})', r'youtu\.be/([a-zA-Z0-9_-]{11})', r'shorts/([a-zA-Z0-9_-]{11})']
-    for p in patterns:
-        match = re.search(p, url)
-        if match: return match.group(1)
-    return None
-
 @app.get("/")
 def home():
-    return {"status": "active", "message": "Downloader API running on Secret Servers!"}
+    return {"status": "active", "message": "API is running on Developer Servers!"}
 
 @app.get("/api/extract")
 def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # 1. TikTok Extractor
+        # 1. TikTok Extractor (Free & Stable)
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
             tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
             req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -48,74 +40,46 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YOUTUBE SECRET SERVERS (100% Free & No Block)
+        # 2. YOUTUBE (Anti-Ban Developer APIs - 100% Free)
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            # Lesser-known private servers (Zero load)
-            secret_servers = [
-                "https://cobalt.owo.network/",
-                "https://cobalt.cachyos.org/",
-                "https://dl.khub.win/",
-                "https://cobalt.eepy.today/"
+            # Ye APIs Vercel ko block nahi kartin
+            apis = [
+                f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={urllib.parse.quote(decoded_url)}",
+                f"https://bk9.fun/download/youtube?url={urllib.parse.quote(decoded_url)}"
             ]
             
-            payload = json.dumps({
-                "url": decoded_url,
-                "videoQuality": "720"
-            }).encode('utf-8')
-            
-            for endpoint in secret_servers:
+            for api_url in apis:
                 try:
-                    req = urllib.request.Request(
-                        endpoint,
-                        data=payload,
-                        headers={
-                            "Accept": "application/json",
-                            "Content-Type": "application/json",
-                            "Origin": "https://cobalt.tools",
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                        },
-                        method="POST"
-                    )
-                    with urllib.request.urlopen(req, timeout=8) as response:
+                    req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=12) as response:
                         res_data = json.loads(response.read().decode())
                         
-                        if "url" in res_data:
-                            v_id = get_yt_id(decoded_url)
-                            thumb = f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else ""
+                        # Extracting link (handles different API JSON structures)
+                        dl_url = res_data.get("url") or res_data.get("data", {}).get("url") or res_data.get("BK9", {}).get("link")
+                        title = res_data.get("title") or res_data.get("data", {}).get("title") or res_data.get("BK9", {}).get("title") or "YouTube Video"
+                        
+                        if dl_url:
                             return {
                                 "success": True,
-                                "title": "YouTube Video",
-                                "thumbnail": thumb,
-                                "download_url": res_data["url"],
+                                "title": title,
+                                "thumbnail": "",
+                                "download_url": dl_url,
                                 "duration": 0
                             }
                 except Exception:
                     continue 
                     
-            return {"success": False, "error": "Bhai thori der mein dobara try karein, server busy hai."}
+            return {"success": False, "error": "Bhai, ye APIs bhi filhal response nahi de rahin. Link try nahi ho saka."}
 
-        # 3. Instagram / Others
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            'quiet': True,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'user_agent': 'Mozilla/5.0',
-        }
+        # 3. Instagram / FB / Others Fallback
+        ydl_opts = {'format': 'best[ext=mp4]/best', 'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(decoded_url, download=False)
-            download_url = info.get('url')
-            if not download_url and 'formats' in info:
-                for f in info['formats']:
-                    if f.get('vcodec') != 'none' and f.get('url'):
-                        download_url = f['url']
-                        break
-
             return {
                 "success": True,
-                "title": info.get('title', 'Downloaded_Video'),
+                "title": info.get('title', 'Video'),
                 "thumbnail": info.get('thumbnail', ''),
-                "download_url": download_url,
+                "download_url": info.get('url'),
                 "duration": info.get('duration', 0)
             }
 
