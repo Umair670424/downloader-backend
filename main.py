@@ -1,9 +1,8 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 import urllib.request
 import json
-import yt_dlp
 
 app = FastAPI()
 
@@ -24,7 +23,9 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
     try:
         decoded_url = urllib.parse.unquote(url).strip()
 
-        # 1. TikTok Extractor (Free & Stable)
+        # ----------------------------------------------------
+        # 1. TikTok Extractor (Free & Fast)
+        # ----------------------------------------------------
         if "tiktok.com" in decoded_url or "vt.tiktok.com" in decoded_url:
             tikwm_url = f"https://www.tikwm.com/api/?url={urllib.parse.quote(decoded_url)}"
             req = urllib.request.Request(tikwm_url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -34,54 +35,90 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                 data = res_data["data"]
                 return {
                     "success": True,
+                    "platform": "TikTok",
                     "title": data.get("title", "TikTok Video"),
                     "thumbnail": data.get("cover", ""),
                     "download_url": data.get("play"),
                     "duration": data.get("duration", 0)
                 }
 
-        # 2. YOUTUBE (Anti-Ban Developer APIs - 100% Free)
-        if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            # Ye APIs Vercel ko block nahi kartin
-            apis = [
-                f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={urllib.parse.quote(decoded_url)}",
-                f"https://bk9.fun/download/youtube?url={urllib.parse.quote(decoded_url)}"
+        # ----------------------------------------------------
+        # 2. Instagram Extractor (Anti-Ban APIs)
+        # ----------------------------------------------------
+        if "instagram.com" in decoded_url:
+            ig_apis = [
+                f"https://api.ryzendesu.vip/api/downloader/igdl?url={urllib.parse.quote(decoded_url)}",
+                f"https://bk9.fun/download/instagram?url={urllib.parse.quote(decoded_url)}"
             ]
             
-            for api_url in apis:
+            for api_url in ig_apis:
                 try:
                     req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=12) as response:
+                    with urllib.request.urlopen(req, timeout=10) as response:
                         res_data = json.loads(response.read().decode())
                         
-                        # Extracting link (handles different API JSON structures)
-                        dl_url = res_data.get("url") or res_data.get("data", {}).get("url") or res_data.get("BK9", {}).get("link")
-                        title = res_data.get("title") or res_data.get("data", {}).get("title") or res_data.get("BK9", {}).get("title") or "YouTube Video"
-                        
+                        dl_url = None
+                        if isinstance(res_data, list) and len(res_data) > 0:
+                            dl_url = res_data[0].get("url") or res_data[0].get("download_url")
+                        elif isinstance(res_data, dict):
+                            dl_url = res_data.get("url") or res_data.get("data", [{}])[0].get("url") if isinstance(res_data.get("data"), list) else res_data.get("BK9", [{}])[0].get("BK9")
+
                         if dl_url:
                             return {
                                 "success": True,
-                                "title": title,
+                                "platform": "Instagram",
+                                "title": "Instagram Video/Reel",
                                 "thumbnail": "",
                                 "download_url": dl_url,
                                 "duration": 0
                             }
                 except Exception:
-                    continue 
-                    
-            return {"success": False, "error": "Bhai, ye APIs bhi filhal response nahi de rahin. Link try nahi ho saka."}
+                    continue
 
-        # 3. Instagram / FB / Others Fallback
-        ydl_opts = {'format': 'best[ext=mp4]/best', 'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(decoded_url, download=False)
-            return {
-                "success": True,
-                "title": info.get('title', 'Video'),
-                "thumbnail": info.get('thumbnail', ''),
-                "download_url": info.get('url'),
-                "duration": info.get('duration', 0)
+        # ----------------------------------------------------
+        # 3. YouTube Extractor (Cobalt Anti-Block Engine)
+        # ----------------------------------------------------
+        if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
+            cobalt_url = "https://api.cobalt.tools/"
+            
+            payload = json.dumps({
+                "url": decoded_url,
+                "videoQuality": "720"
+            }).encode('utf-8')
+            
+            headers = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
             }
+            
+            req = urllib.request.Request(cobalt_url, data=payload, headers=headers, method='POST')
+            
+            with urllib.request.urlopen(req, timeout=12) as response:
+                res_data = json.loads(response.read().decode())
+                
+                # Cobalt returns direct link in status 'redirect' or 'tunnel'
+                if res_data.get("status") in ["redirect", "tunnel"]:
+                    return {
+                        "success": True,
+                        "platform": "YouTube",
+                        "title": "YouTube Video",
+                        "thumbnail": "",
+                        "download_url": res_data.get("url"),
+                        "duration": 0
+                    }
+                elif res_data.get("status") == "picker" and len(res_data.get("picker", [])) > 0:
+                    # Multi-quality picker response fallback
+                    return {
+                        "success": True,
+                        "platform": "YouTube",
+                        "title": "YouTube Video",
+                        "thumbnail": "",
+                        "download_url": res_data["picker"][0].get("url"),
+                        "duration": 0
+                    }
+
+        return {"success": False, "error": "Unsupported platform or link error."}
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"Extraction Error: {str(e)}"}
