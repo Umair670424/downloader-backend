@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import urllib.parse
 import urllib.request
 import json
+import re
 
 app = FastAPI()
 
@@ -13,6 +14,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# RapidAPI Credentials
+RAPIDAPI_KEY = "7b3ce3bdb2mshbcfe925ba0ce6adp1433fdjsnae6124ee9ded"
+RAPIDAPI_HOST = "youtube-video-fast-downloader-24-7.p.rapidapi.com"
+
+def extract_youtube_id(url: str):
+    """YouTube URL se Video ID extract karne ka function"""
+    regex = r"(?:v=|\/|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})"
+    match = re.search(regex, url)
+    if match:
+        return match.group(1)
+    return None
 
 @app.get("/")
 def home():
@@ -43,20 +56,18 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                 }
 
         # ----------------------------------------------------
-        # 2. Instagram Extractor (Anti-Ban APIs)
+        # 2. Instagram Extractor
         # ----------------------------------------------------
         if "instagram.com" in decoded_url:
             ig_apis = [
                 f"https://api.ryzendesu.vip/api/downloader/igdl?url={urllib.parse.quote(decoded_url)}",
                 f"https://bk9.fun/download/instagram?url={urllib.parse.quote(decoded_url)}"
             ]
-            
             for api_url in ig_apis:
                 try:
                     req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
                     with urllib.request.urlopen(req, timeout=10) as response:
                         res_data = json.loads(response.read().decode())
-                        
                         dl_url = None
                         if isinstance(res_data, list) and len(res_data) > 0:
                             dl_url = res_data[0].get("url") or res_data[0].get("download_url")
@@ -76,65 +87,47 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     continue
 
         # ----------------------------------------------------
-        # 3. YouTube Extractor (Multi-API Fallback Engine)
+        # 3. YouTube Extractor (RapidAPI 24/7 Engine)
         # ----------------------------------------------------
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            clean_yt_url = decoded_url.split("?si=")[0]  # Clean tracking tags
+            video_id = extract_youtube_id(decoded_url)
             
-            # Method A: High-speed Anti-Ban APIs
-            yt_apis = [
-                f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={urllib.parse.quote(clean_yt_url)}",
-                f"https://bk9.fun/download/youtube?url={urllib.parse.quote(clean_yt_url)}"
-            ]
-            
-            for api_url in yt_apis:
-                try:
-                    req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                    with urllib.request.urlopen(req, timeout=10) as response:
-                        res_data = json.loads(response.read().decode())
-                        
-                        dl_url = res_data.get("url") or res_data.get("data", {}).get("url") or res_data.get("BK9", {}).get("link")
-                        title = res_data.get("title") or res_data.get("data", {}).get("title") or res_data.get("BK9", {}).get("title") or "YouTube Video"
-                        
-                        if dl_url:
-                            return {
-                                "success": True,
-                                "platform": "YouTube",
-                                "title": title,
-                                "thumbnail": "",
-                                "download_url": dl_url,
-                                "duration": 0
-                            }
-                except Exception:
-                    continue
+            if not video_id:
+                return {"success": False, "error": "Invalid YouTube URL format."}
 
-            # Method B: Updated Cobalt API payload fallback
+            # RapidAPI Download Endpoint (Quality 22 = 720p MP4)
+            rapid_url = f"https://{RAPIDAPI_HOST}/download_video/{video_id}?quality=22"
+            
+            headers = {
+                'x-rapidapi-host': RAPIDAPI_HOST,
+                'x-rapidapi-key': RAPIDAPI_KEY,
+                'Content-Type': 'application/json'
+            }
+
             try:
-                cobalt_url = "https://api.cobalt.tools/"
-                payload = json.dumps({"url": clean_yt_url}).encode('utf-8')
-                headers = {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                }
-                req = urllib.request.Request(cobalt_url, data=payload, headers=headers, method='POST')
-                with urllib.request.urlopen(req, timeout=10) as response:
+                req = urllib.request.Request(rapid_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=15) as response:
                     res_data = json.loads(response.read().decode())
-                    if res_data.get("url"):
+                    
+                    # Direct Download Link Extraction
+                    dl_url = res_data.get("download_url") or res_data.get("url") or res_data.get("link")
+                    
+                    if dl_url:
                         return {
                             "success": True,
                             "platform": "YouTube",
-                            "title": "YouTube Video",
-                            "thumbnail": "",
-                            "download_url": res_data.get("url"),
+                            "title": res_data.get("title", "YouTube Video"),
+                            "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                            "download_url": dl_url,
                             "duration": 0
                         }
-            except Exception:
-                pass
+                    else:
+                        return {"success": False, "error": "Video link not generated by RapidAPI."}
 
-            return {"success": False, "error": "YouTube APIs error, please try again."}
+            except Exception as e:
+                return {"success": False, "error": f"RapidAPI YouTube Error: {str(e)}"}
 
-        return {"success": False, "error": "Unsupported platform or link error."}
+        return {"success": False, "error": "Unsupported platform."}
 
     except Exception as e:
-        return {"success": False, "error": f"Extraction Error: {str(e)}"}
+        return {"success": False, "error": f"Server Error: {str(e)}"}
