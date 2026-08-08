@@ -76,47 +76,63 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                     continue
 
         # ----------------------------------------------------
-        # 3. YouTube Extractor (Cobalt Anti-Block Engine)
+        # 3. YouTube Extractor (Multi-API Fallback Engine)
         # ----------------------------------------------------
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
-            cobalt_url = "https://api.cobalt.tools/"
+            clean_yt_url = decoded_url.split("?si=")[0]  # Clean tracking tags
             
-            payload = json.dumps({
-                "url": decoded_url,
-                "videoQuality": "720"
-            }).encode('utf-8')
+            # Method A: High-speed Anti-Ban APIs
+            yt_apis = [
+                f"https://api.ryzendesu.vip/api/downloader/ytmp4?url={urllib.parse.quote(clean_yt_url)}",
+                f"https://bk9.fun/download/youtube?url={urllib.parse.quote(clean_yt_url)}"
+            ]
             
-            headers = {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0'
-            }
-            
-            req = urllib.request.Request(cobalt_url, data=payload, headers=headers, method='POST')
-            
-            with urllib.request.urlopen(req, timeout=12) as response:
-                res_data = json.loads(response.read().decode())
-                
-                # Cobalt returns direct link in status 'redirect' or 'tunnel'
-                if res_data.get("status") in ["redirect", "tunnel"]:
-                    return {
-                        "success": True,
-                        "platform": "YouTube",
-                        "title": "YouTube Video",
-                        "thumbnail": "",
-                        "download_url": res_data.get("url"),
-                        "duration": 0
-                    }
-                elif res_data.get("status") == "picker" and len(res_data.get("picker", [])) > 0:
-                    # Multi-quality picker response fallback
-                    return {
-                        "success": True,
-                        "platform": "YouTube",
-                        "title": "YouTube Video",
-                        "thumbnail": "",
-                        "download_url": res_data["picker"][0].get("url"),
-                        "duration": 0
-                    }
+            for api_url in yt_apis:
+                try:
+                    req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        res_data = json.loads(response.read().decode())
+                        
+                        dl_url = res_data.get("url") or res_data.get("data", {}).get("url") or res_data.get("BK9", {}).get("link")
+                        title = res_data.get("title") or res_data.get("data", {}).get("title") or res_data.get("BK9", {}).get("title") or "YouTube Video"
+                        
+                        if dl_url:
+                            return {
+                                "success": True,
+                                "platform": "YouTube",
+                                "title": title,
+                                "thumbnail": "",
+                                "download_url": dl_url,
+                                "duration": 0
+                            }
+                except Exception:
+                    continue
+
+            # Method B: Updated Cobalt API payload fallback
+            try:
+                cobalt_url = "https://api.cobalt.tools/"
+                payload = json.dumps({"url": clean_yt_url}).encode('utf-8')
+                headers = {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                }
+                req = urllib.request.Request(cobalt_url, data=payload, headers=headers, method='POST')
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    res_data = json.loads(response.read().decode())
+                    if res_data.get("url"):
+                        return {
+                            "success": True,
+                            "platform": "YouTube",
+                            "title": "YouTube Video",
+                            "thumbnail": "",
+                            "download_url": res_data.get("url"),
+                            "duration": 0
+                        }
+            except Exception:
+                pass
+
+            return {"success": False, "error": "YouTube APIs error, please try again."}
 
         return {"success": False, "error": "Unsupported platform or link error."}
 
