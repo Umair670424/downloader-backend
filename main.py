@@ -57,68 +57,80 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                 }
 
         # ----------------------------------------------------
-        # 2. Instagram Extractor (Properly Fixed Direct .mp4 Extractor)
+        # 2. Instagram Extractor (Multi-Fallback Fix)
         # ----------------------------------------------------
         if "instagram.com" in decoded_url:
             clean_url = decoded_url.split("?")[0]
             
-            # Endpoint 1: Ryzendesu API (Parsed Deeply)
+            # API 1: Fast Direct Downloader Engine
             try:
-                ryzen_url = f"https://api.ryzendesu.vip/api/downloader/igdl?url={urllib.parse.quote(clean_url)}"
-                req = urllib.request.Request(ryzen_url, headers={'User-Agent': 'Mozilla/5.0'})
+                fast_url = f"https://api.siputzx.my.id/api/d/ig?url={urllib.parse.quote(clean_url)}"
+                req = urllib.request.Request(fast_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=10) as response:
                     res_data = json.loads(response.read().decode())
-                    
-                    dl_url = None
-                    if isinstance(res_data, list) and len(res_data) > 0:
-                        dl_url = res_data[0].get("url") or res_data[0].get("download_url")
-                    elif isinstance(res_data, dict):
-                        data_field = res_data.get("data")
-                        if isinstance(data_field, list) and len(data_field) > 0:
-                            dl_url = data_field[0].get("url") or data_field[0].get("download_url")
-                        elif isinstance(data_field, dict):
-                            dl_url = data_field.get("url")
-                        else:
-                            dl_url = res_data.get("url")
+                    data = res_data.get("data", [])
+                    if isinstance(data, list) and len(data) > 0:
+                        dl_url = data[0].get("url")
+                        if dl_url:
+                            return {
+                                "success": True,
+                                "platform": "Instagram",
+                                "title": "Instagram Video/Reel",
+                                "thumbnail": data[0].get("thumbnail", ""),
+                                "download_url": dl_url,
+                                "duration": 0
+                            }
+            except Exception:
+                pass
 
-                    if dl_url and dl_url.startswith("http"):
+            # API 2: Cobalt Instance Backup
+            try:
+                cobalt_url = "https://api.cobalt.tools/"
+                payload = json.dumps({"url": clean_url}).encode('utf-8')
+                headers = {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0'
+                }
+                req = urllib.request.Request(cobalt_url, data=payload, headers=headers, method='POST')
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    res_data = json.loads(response.read().decode())
+                    if res_data.get("url"):
                         return {
                             "success": True,
                             "platform": "Instagram",
                             "title": "Instagram Video/Reel",
                             "thumbnail": "",
-                            "download_url": dl_url,
+                            "download_url": res_data.get("url"),
                             "duration": 0
                         }
             except Exception:
                 pass
 
-            # Endpoint 2: Fallback API (BK9)
+            # API 3: Backup Scraper (Ryzendesu)
             try:
-                bk9_url = f"https://bk9.fun/download/instagram?url={urllib.parse.quote(clean_url)}"
-                req = urllib.request.Request(bk9_url, headers={'User-Agent': 'Mozilla/5.0'})
+                ryzen_url = f"https://api.ryzendesu.vip/api/downloader/igdl?url={urllib.parse.quote(clean_url)}"
+                req = urllib.request.Request(ryzen_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=10) as response:
                     res_data = json.loads(response.read().decode())
-                    if res_data.get("status") and "BK9" in res_data:
-                        bk9_list = res_data["BK9"]
-                        if isinstance(bk9_list, list) and len(bk9_list) > 0:
-                            dl_url = bk9_list[0].get("url") or bk9_list[0].get("BK9")
-                            if dl_url:
-                                return {
-                                    "success": True,
-                                    "platform": "Instagram",
-                                    "title": "Instagram Video/Reel",
-                                    "thumbnail": "",
-                                    "download_url": dl_url,
-                                    "duration": 0
-                                }
+                    if isinstance(res_data, list) and len(res_data) > 0:
+                        dl_url = res_data[0].get("url")
+                        if dl_url and dl_url.startswith("http"):
+                            return {
+                                "success": True,
+                                "platform": "Instagram",
+                                "title": "Instagram Video/Reel",
+                                "thumbnail": "",
+                                "download_url": dl_url,
+                                "duration": 0
+                            }
             except Exception:
                 pass
 
             return {"success": False, "error": "Instagram extraction failed. Link might be private or broken."}
 
         # ----------------------------------------------------
-        # 3. YouTube Extractor (With RapidAPI Key Support)
+        # 3. YouTube Extractor (RapidAPI Key Support)
         # ----------------------------------------------------
         if "youtube.com" in decoded_url or "youtu.be" in decoded_url:
             video_id = extract_youtube_id(decoded_url)
