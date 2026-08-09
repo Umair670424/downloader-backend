@@ -5,6 +5,7 @@ import urllib.request
 import json
 import yt_dlp
 import re
+import os
 
 app = FastAPI()
 
@@ -16,10 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# RapidAPI Credentials for YouTube
-RAPIDAPI_KEYS = [
-    "7b3ce3bdb2mshbcfe925ba0ce6adp1433fdjsnae6124ee9ded"
-]
+# RapidAPI Credentials for YouTube (Vercel Environment Variable Integration)
+env_rapid_key = os.getenv("RAPIDAPI_KEY", "7b3ce3bdb2mshbcfe925ba0ce6adp1433fdjsnae6124ee9ded")
+RAPIDAPI_KEYS = [env_rapid_key]
+
 RAPIDAPI_HOST = "youtube-video-fast-downloader-24-7.p.rapidapi.com"
 
 def extract_youtube_id(url: str):
@@ -58,7 +59,7 @@ def extract_video(url: str = Query(..., description="Video URL to extract")):
                 }
 
         # ----------------------------------------------------
-        # 2. Instagram Extractor (Aapka Sahi Aur Working Code)
+        # 2. Instagram Extractor
         # ----------------------------------------------------
         if "instagram.com" in decoded_url:
             ig_apis = [
